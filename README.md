@@ -8,12 +8,6 @@
 sh sign.sh <apk-file> [output-directory]
 ```
 
+**Update**
 
-签名后会输出两个文件。 
-  1. 普通签名的 APK
-  2. 签名 + zipalign 优化的 APK
-  
-发现360加固保使用普通签名的apk没有问题，但是腾讯乐固需要 zipalign 优化才能正常安装…
-  
-  
-  
+签名方式由 ```jarsigner``` 更换为 ```apksigner``` , 可以默认使用 [APK Signature Scheme v2](https://source.android.com/security/apksigning/v2.html) 

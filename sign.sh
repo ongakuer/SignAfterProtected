@@ -1,14 +1,14 @@
 #!bin/bash
 if [[ ! $1 || "${1##*.}" != "apk" ]]; then
-	echo "找不到 apk文件"
+	echo "找不到 apk 文件"
 	echo "用法：sh sign.sh <apk-file> [output-directory]"
 	exit 0
 fi
 
 
-scriptDir=$(cd `dirname $0`; pwd);
+script_dir=$(cd `dirname $0`; pwd);
 if [[ ! $2 ]]; then
-	outdir="$scriptDir/output"
+	outdir="$script_dir/output"
 	if [ ! -d "$outdir" ]; then  
 		mkdir $outdir
 	fi
@@ -16,67 +16,84 @@ else
 	outdir=$2
 fi
 
-if [[ ! -f "$scriptDir/zipalign" ]]; then 
-	echo "缺少 zipalign 文件，请将 android-sdk/build-tools/version/zipalign 文件复制到脚本目录中"
-	exit 0
+properties_path="$script_dir/sign.properties"
+
+if [[ ! -f $properties_path ]]; then 
+	echo "创建 $properties_path"
+	touch $properties_path
+	echo "#加固后签名配置" >> $properties_path
 fi
 
-
-signPropertiesFileName="sign.properties"
-signPropertiesFilePath="$scriptDir/$signPropertiesFileName"
-
-echo $signPropertiesFilePath
-
-if [[ ! -f $signPropertiesFilePath ]]; then 
-	echo "创建 $signPropertiesFileName"
-	touch $signPropertiesFilePath
-	echo "#加固后签名配置" >> $signPropertiesFilePath
-fi
-
-getOrSetProperty(){
-	local value=`cat $signPropertiesFilePath | grep "$1" | cut -d'=' -f2`
+get_property(){
+	local value=`cat $properties_path | grep "$1" | cut -d'=' -f2`
 
 	while [[ ! $value ]]; do
 		echo "$2"
 		read -e value
 		if [[ $value ]]; then
-			echo "\n$1=$value" >> $signPropertiesFilePath
+			echo "\n$1=$value" >> $properties_path
 		fi
 	done
-	currentProperty="$value"
+	current_property="$value"
 }
 
-getOrSetProperty "keystore" "请输入 keystore 路径"
-keystore=$currentProperty
+get_property "android-sdk" "请输入 Android SDK 路径"
+sdk_path=$current_property
 
-getOrSetProperty "storepass" "请输入 storepass 密码"
-storepass=$currentProperty
+get_property "keystore" "请输入 keystore 路径"
+keystore=$current_property
 
-getOrSetProperty "keypass" "请输入 keypass 密码"
-keypass=$currentProperty
+get_property "storepass" "请输入 storepass 密码"
+storepass=$current_property
 
-getOrSetProperty "alias" "请输入 alias"
-aliasValue=$currentProperty
+get_property "keypass" "请输入 keypass 密码"
+keypass=$current_property
 
-# echo  "keystore = $keystore"
-# echo  "storepass = $storepass"
-# echo  "keypass = $keypass"
-# echo  "alias = $aliasValue"
+get_property "alias" "请输入 alias"
+aliasValue=$current_property
 
-inputApk=$1
-inputFileName=$(basename $inputApk .apk)
-signApk="$outdir/$inputFileName-sign.apk"
-signZipalignApk="$outdir/$inputFileName-sign-zipalign.apk" 
+build_tools_path=$(find $sdk_path/"build-tools" -depth 1 -type d -print | tail -1)
+
+
+# 检查 zipalign 和 apksigner
+if [[ ! -f "$build_tools_path/zipalign" ]]; then 
+	echo "找不到 zipalign 文件"
+	exit 0
+fi
+
+if [[ ! -f "$build_tools_path/apksigner" ]]; then 
+	echo "找不到 apksigner 文件"
+	exit 0
+fi
+
+input_apk=$1
+input_file_name=$(basename $input_apk .apk)
+zipalign_apk="$outdir/$input_file_name-zipalign.apk" 
+signed_apk="$outdir/$input_file_name-signed.apk"
 
 
 {  # try
-rm -rf $signZipalignApk
-rm -rf $signApk
-jarsigner -verbose -digestalg SHA1 -sigalg MD5withRSA -keystore $keystore -storepass $storepass -keypass $keypass -signedjar $signApk $inputApk $aliasValue 
-$scriptDir/zipalign -v 4 $signApk $signZipalignApk
-
+	rm -rf $zipalign_apk
+	rm -rf $signed_apk
+	$build_tools_path/zipalign -v 4 $input_apk $zipalign_apk
+	$build_tools_path/apksigner sign --ks $keystore --ks-key-alias $aliasValue --ks-pass pass:$storepass --key-pass pass:$keypass --out $signed_apk $zipalign_apk
+	rm -rf $zipalign_apk
+	echo "签名完成 $signed_apk"
 } || { # catch
 	rm -rf "$signApk"
 	rm -rf "$signZipalignApk"
 	echo "出错了…"
 }
+
+# V1
+# {  # try
+# rm -rf $signZipalignApk
+# rm -rf $signApk
+# jarsigner -verbose -digestalg SHA1 -sigalg MD5withRSA -keystore $keystore -storepass $storepass -keypass $keypass -signedjar $signApk $inputApk $aliasValue 
+# $script_dir/zipalign -v 4 $signApk $signZipalignApk
+
+# } || { # catch
+# 	rm -rf "$signApk"
+# 	rm -rf "$signZipalignApk"
+# 	echo "出错了…"
+# }
